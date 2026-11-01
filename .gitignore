@@ -19,3 +19,5 @@ charts/
 /deploy/authelia/data/
 /deploy/authelia/*login*.txt
 /deploy/authelia/guard-backup-*.json
+# Authelia proxy host backups written by guard.sh
+/deploy/authelia/backup/
