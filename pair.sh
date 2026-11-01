@@ -15,8 +15,12 @@ if [ -f "$CONF_DIR/.env" ]; then
     set +a
 fi
 
-PUBLIC_URL="${1:-${PUBLIC_URL:-https://code.aleksei.dev}}"
-HOST="${WEB_HOST:-172.23.0.1}"
+PUBLIC_URL="${1:-${PUBLIC_URL:-}}"
+if [ -z "$PUBLIC_URL" ]; then
+    echo "error: set PUBLIC_URL in .env or pass it as an argument" >&2
+    exit 1
+fi
+HOST="${WEB_HOST:-127.0.0.1}"
 PORT="${WEB_PORT:-49375}"
 PASS_FILE="${WEB_ACCESS_FILE:-login.txt}"
 case "$PASS_FILE" in
@@ -24,7 +28,7 @@ case "$PASS_FILE" in
     *) PASS_FILE="$CONF_DIR/$PASS_FILE" ;;
 esac
 
-PW=$(grep -oP 'password: \K\S+' "$PASS_FILE" 2>/dev/null | head -1)
+PW=$(grep -oP '^password: \K\S+' "$PASS_FILE" 2>/dev/null | head -1)
 if [ -z "$PW" ]; then
     echo "error: no password found in $PASS_FILE" >&2
     exit 1

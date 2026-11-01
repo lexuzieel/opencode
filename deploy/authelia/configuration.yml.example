@@ -1,0 +1,57 @@
+---
+# Authelia for auth.<domain>, guards draw.<domain> and files.<domain>.
+# setup.sh replaces __GENERATED__ with fresh secrets and <domain> with the
+# real domain before starting the container.
+theme: 'auto'
+
+server:
+  address: 'tcp://:9091'
+
+log:
+  level: 'info'
+
+storage:
+  encryption_key: '__GENERATED__'
+  local:
+    path: '/data/db.sqlite3'
+
+identity_validation:
+  reset_password:
+    jwt_secret: '__GENERATED__'
+
+authentication_backend:
+  file:
+    path: '/config/users_database.yml'
+
+access_control:
+  default_policy: 'deny'
+  rules:
+    - domain: 'files.<domain>'
+      resources:
+        - '^/public(/.*)?$'
+        - '^/robots\.txt$'
+      policy: 'bypass'
+    - domain: 'draw.<domain>'
+      policy: 'one_factor'
+    - domain: 'files.<domain>'
+      policy: 'one_factor'
+
+session:
+  name: 'authelia_session'
+  same_site: 'lax'
+  expiration: '30d'
+  inactivity: '1d'
+  secret: '__GENERATED__'
+  cookies:
+    - domain: '<domain>'
+      authelia_url: 'https://auth.<domain>'
+      default_redirection_url: 'https://draw.<domain>'
+
+regulation:
+  max_retries: 5
+  find_time: '2m'
+  ban_time: '5m'
+
+notifier:
+  filesystem:
+    filename: '/data/notifications.txt'

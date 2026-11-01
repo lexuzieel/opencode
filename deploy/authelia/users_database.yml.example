@@ -1,0 +1,14 @@
+---
+###############################################################
+#                         Users Database                        #
+###############################################################
+
+# setup.sh fills in the user name, the domain and an argon2 hash.
+# Generate a new hash by hand:
+#   docker run --rm authelia/authelia:latest crypto hash generate argon2 --password 'secret'
+
+users:
+  __USER__:
+    displayname: "__USER__"
+    password: '__SET_BY_SETUP__'
+    email: __USER__@<domain>

@@ -11,5 +11,11 @@ login.txt
 charts/
 
 # machine state, never committed
-share/
-authelia/
+/share/
+/authelia/
+
+# Authelia runtime state and guard backups
+/deploy/authelia/config/
+/deploy/authelia/data/
+/deploy/authelia/*login*.txt
+/deploy/authelia/guard-backup-*.json

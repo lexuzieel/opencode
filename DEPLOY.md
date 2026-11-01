@@ -1,12 +1,16 @@
 # Deploy guide
 
-Order matters: the OpenCode web server first, then the reverse proxy hosts, then
-the Authelia gate, then the file dump. Each phase ends with a check that must
-pass before the next one starts.
+Order matters: the web server first, then the reverse proxy hosts, then the
+file dump, then the Authelia gate. Each phase ends with a check that must pass
+before the next one starts.
 
 ## 0. Prerequisites
 
-- Linux with `systemd`, `curl`, `python3`, `tmux`, `git`, Docker.
+- Linux with `systemd`, `curl`, `python3`, `tmux`, `git`, `openssl`.
+- Docker with the `compose` plugin.
+- GNU `grep` (the scripts use `-P`) and `iproute2` (only when `WEB_HOST` is a
+  docker bridge address).
+- `uuidgen` for public links; without it `share.sh` falls back to `openssl`.
 - `opencode` v2 in `PATH`:
   ```sh
   curl -fsSL https://opencode.ai/v2/install | bash
@@ -14,22 +18,28 @@ pass before the next one starts.
   ```
 - A provider logged in: `opencode auth login`.
 - A reverse proxy (nginx-proxy-manager, Caddy, nginx) with a domain and TLS.
-- Docker network `gateway` shared with the proxy. Proxy hosts reach containers
-  by container name; no ports are published to the host.
+
+Every container joins the docker network `gateway`, and the proxy reaches them
+by container name, so no port is published to the host:
+
+```sh
+docker network inspect gateway >/dev/null 2>&1 || docker network create gateway
+```
 
 ## 1. Clone and configure
 
 ```sh
-git clone git@github.com:lexuzieel/opencode.git ~/opencode
+git clone <repository> ~/opencode
 cd ~/opencode
 cp .env.example .env
+$EDITOR .env
 ```
-
-`.env`:
 
 | Variable | Value |
 |---|---|
 | `PUBLIC_URL` | public URL of the web UI, scheme included |
+| `SHARE_URL` | public base URL of the file dump, scheme included, no trailing slash |
+| `SHARE_ROOT` | where `share.sh` keeps files; default `share/` in this directory |
 | `WEB_HOST` | listen address: docker bridge gateway when the proxy is a container, `127.0.0.1` when the proxy runs on the host |
 | `WEB_PORT` | port of the standalone server |
 | `WEB_ACCESS_FILE` | password file, relative to this directory or absolute |
@@ -49,8 +59,10 @@ printf '# login: opencode\npassword: %s\n' "$PW" > login.txt
 chmod 600 login.txt
 ```
 
-`opencode service set password` restarts the background service, so open TUI
-sessions reconnect for a moment and every web session is signed out.
+`opencode service set password` restarts the background service on
+`127.0.0.1:49374`, so TUI sessions reconnect for a moment. The web UI is a
+separate process and reads this password from `login.txt` when `web.sh` starts,
+so restart it to pick up a new one.
 
 Never change the service hostname away from `127.0.0.1`; the local CLI connects
 there, and any other bind makes the TUI hang on "Starting background server".
@@ -60,7 +72,7 @@ The public UI is `web.sh`, a separate process.
 
 ```sh
 ./web.sh                      # foreground run, Ctrl+C to stop
-curl -s -u "opencode:$(grep -oP 'password: \K\S+' login.txt)" \
+. ./.env && curl -s -u "opencode:$(grep -oP '^password: \K\S+' login.txt)" \
   -o /dev/null -w '%{http_code}\n' "$PUBLIC_URL/api/info"    # expect 200
 ```
 
@@ -74,7 +86,7 @@ Check that it works without rebooting:
 
 ```sh
 tmux -L opencode kill-session -t opencode-web 2>/dev/null
-env -i HOME="$HOME" ./boot.sh        # takes ~20s
+env -i HOME="$HOME" ./boot.sh        # waits 20s for docker, then starts
 tmux -L opencode ls
 ```
 
@@ -90,14 +102,19 @@ and SSE passed through, `Host` header preserved.
 | `files.<domain>` | `share-files:80` | read-only file dump |
 
 Examples: nginx-proxy-manager (Proxy Host, Websockets on, Cache off, request a
-certificate, Force SSL), Caddy `reverse_proxy host:port`, nginx
-`proxy_pass` plus `Upgrade`/`Connection` headers. Certificates can use DNS-01
-with a Cloudflare token; `~/.agents/NPM.md` documents that flow on the servers
-that use nginx-proxy-manager.
+certificate, Force SSL), Caddy `reverse_proxy host:port`, nginx `proxy_pass`
+plus `Upgrade`/`Connection` headers. Certificates can use DNS-01 with a
+Cloudflare token.
 
 ## 5. File dump
 
+Create the directory before the container does, otherwise docker creates it as
+root and `share.sh` cannot write there:
+
 ```sh
+mkdir -p ~/opencode/share && chmod 755 ~/opencode/share
+printf '# File dump: not for search engines.\nUser-agent: *\nDisallow: /\n' \
+  > ~/opencode/share/robots.txt
 cd ~/opencode/deploy/share-files && docker compose up -d
 ```
 
@@ -107,52 +124,55 @@ container returns 403.
 
 ```sh
 echo demo > /tmp/demo.txt
-~/opencode/share.sh /tmp/demo.txt --project demo
+~/opencode/share.sh /tmp/demo.txt --project demo      # private link
+~/opencode/share.sh /tmp/demo.txt --project demo --public   # plus public link
 ```
+
+Every share is private by default and needs an Authelia login. `--public` adds a
+symlink under `public/<uuid>/`, which the dump serves without login, and appends
+a row to `share/public-links.md`.
 
 ## 6. Authelia gate
 
 ```sh
 cd ~/opencode/deploy/authelia
-./setup.sh                    # generates secrets and a password, starts the container
-cat login.txt                 # the login written by setup.sh
+AUTHELIA_DOMAIN=example.com ./setup.sh   # generates secrets and a password
+cat authelia-login.txt
 ```
 
-Then protect hosts in the proxy: add the `auth_request` snippet to each guarded
-host's advanced config. It must sit at server level, next to the `location`
-block that the proxy generates itself:
+State lives in `deploy/authelia/config/` and `data/`, both git-ignored. The
+compose project is named `opencode-authelia` while the container keeps the name
+`authelia`, so a second checkout cannot take the live container over.
 
-```nginx
-auth_request /authelia;
-error_page 401 =302 https://auth.<domain>/?rd=$scheme://$http_host$request_uri;
+Guard a host (this writes the `auth_request` snippet into the proxy host):
 
-location = /authelia {
-    internal;
-    proxy_pass http://authelia:9091/api/authz/auth-request;
-    proxy_pass_request_body off;
-    proxy_set_header Content-Length "";
-    proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
-    proxy_set_header Cookie $http_cookie;
-    proxy_set_header Host $http_host;
-}
+```sh
+export NPM_URL=http://10.0.0.5:81 NPM_IDENTITY=agent@example.com \
+       NPM_SECRET=... AUTH_DOMAIN=auth.example.com
+./guard.sh protect <npm-host-id>
+./guard.sh unprotect <npm-host-id>     # restores the previous advanced_config
 ```
 
-Every guarded host needs a matching rule in `authelia/config/configuration.yml`
-(`access_control.rules`, policy `one_factor`); the default policy is deny and an
-unknown host returns 403 instead of a redirect. Restart the container after
-editing:
+Every guarded host also needs a matching rule in
+`deploy/authelia/config/configuration.yml` (`access_control.rules`, policy
+`one_factor`); the default policy is deny, so an unknown host returns 403
+instead of a redirect. Restart the container after editing:
 
 ```sh
 docker compose restart authelia
 ```
 
-## 7. Skill install
+The dump has one bypass rule ahead of its login rule, for `^/public(/.*)?$` and
+`^/robots\.txt$`, which is what makes published links open without a session.
 
-The skill ships in the repository and is linked into the agent's skill
+## 7. Skills
+
+The skills ship in the repository and are linked into the agent's skill
 directory:
 
 ```sh
-ln -sfn ~/opencode/skills/share-files ~/.agents/skills/share-files
+mkdir -p ~/.agents/skills
+for s in ~/opencode/skills/*; do ln -sfn "$s" "$HOME/.agents/skills/$(basename "$s")"; done
 ```
 
 ## 8. Verify
@@ -160,6 +180,8 @@ ln -sfn ~/opencode/skills/share-files ~/.agents/skills/share-files
 ```sh
 curl -sI https://files.<domain>/ | head -1      # 302 to the Authelia portal
 curl -s  https://auth.<domain>/api/health       # {"status":"OK"}
+curl -sI https://files.<domain>/robots.txt | head -1        # 200, no login
+curl -sI https://files.<domain>/public/ | head -1           # 404, no listing
 ```
 
 Open the file dump in a browser, log in once, confirm the listing and a file
@@ -171,7 +193,7 @@ download. Only a browser proves the session cookie end to end.
 opencode upgrade
 cd ~/opencode && git pull
 tmux -L opencode kill-session -t opencode-web
-tmux -L opencode new-session -d -s opencode-web -c ~/opencode 'bash ~/opencode/web.sh'
+./boot.sh                       # waits 20s, starts the web session again
 cd deploy/share-files && docker compose up -d
 cd ../authelia && docker compose up -d
 ```
@@ -181,9 +203,13 @@ cd ../authelia && docker compose up -d
 | Symptom | Check |
 |---|---|
 | Proxy 502 | `ss -ltn \| grep WEB_PORT`; `tmux -L opencode ls` for `opencode-web` |
-| TUI hangs on "Starting background server" | service must listen on `127.0.0.1`; `opencode service set hostname 127.0.0.1 && opencode service start` |
+| TUI hangs on "Starting background server" | service must listen on `127.0.0.1`: `opencode service set hostname 127.0.0.1 && opencode service start` |
 | Web UI asks for a link | expected: `./pair.sh` |
+| `pair.sh` says no password | `login.txt` missing or without a `password:` line |
+| `pair.sh` says PUBLIC_URL is unset | no `.env`, or `.env` without `PUBLIC_URL` |
 | Guarded host returns 403 instead of a login redirect | host missing from `access_control.rules` in Authelia |
 | Dump returns 403 | directory not readable by the nginx user: `chmod 755` |
+| `share.sh` prints local paths | `SHARE_URL` is not set in `.env` |
+| `docker compose up` fails with "network gateway not found" | `docker network create gateway` |
+| Login to the dump loops back | cookie domain in `session.cookies` must match the parent domain of every guarded host |
 | QR missing in `pair.sh` | `pip install --user qrcode` |
-| `pair.sh` says no password | `login.txt` missing or without a `password:` line |

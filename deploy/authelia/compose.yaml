@@ -1,0 +1,22 @@
+services:
+  authelia:
+    image: authelia/authelia:latest
+    container_name: authelia
+    restart: unless-stopped
+    # Keep the project name apart from other checkouts: the container name is
+    # fixed because proxy hosts reach it as http://authelia:9091, so a second
+    # checkout that shares the project name would silently take it over.
+    name: opencode-authelia
+    volumes:
+      - ./config:/config
+      - ./data:/data
+    environment:
+      - TZ=Etc/UTC
+    expose:
+      - "9091"
+    networks:
+      - gateway
+
+networks:
+  gateway:
+    external: true
