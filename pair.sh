@@ -41,7 +41,10 @@ fi
 echo "$PUBLIC_URL/auth/connect/$CODE"
 echo
 python3 - "$PUBLIC_URL/auth/connect/$CODE" <<'PY'
+import signal
 import sys
+
+signal.signal(signal.SIGPIPE, signal.SIG_DFL)  # die quietly on `| head`
 try:
     import qrcode
 except ImportError:
