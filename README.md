@@ -25,6 +25,11 @@ live in `deploy/`.
 | `share/`, `deploy/authelia/config`, `data` | machine state: files and secrets, never committed |
 | `password.txt` | web UI password (git-ignored); see `password.example.txt` |
 
+Projects use this launcher rather than keeping their own copy of the session
+manager: a wrapper in a project folder only exports `TMUX_PROJECT_DIR` and
+execs `~/opencode/opencode.sh`, so session naming, conversation resume and the
+tmux settings have one source of truth.
+
 ## Architecture
 
 ```
