@@ -12,6 +12,7 @@ Everything deployment specific lives in `.env`; the only secret is `login.txt`.
 | `web.sh` | standalone `opencode serve` for the browser and phone UI; binds the docker bridge IP so a reverse proxy can reach it |
 | `boot.sh` | cron `@reboot` entry point: waits for Docker, starts `web.sh` in a tmux session |
 | `pair.sh` | prints a one-time login link and a QR code for the web UI |
+| `share.sh` | copies a file into the server file dump (`~/share`) and prints its public URL |
 | `.env.example` | template for `.env` (public URL, bind address, password file path) |
 | `DEPLOY.md` | step-by-step deployment guide for a new server |
 | `login.txt` | server password (git-ignored); see `login.example.txt` |

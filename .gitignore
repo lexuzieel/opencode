@@ -6,3 +6,6 @@ login.txt
 
 # Local deployment config
 .env
+
+# local one-off artifacts
+charts/
