@@ -33,6 +33,18 @@ Defaults: project = current directory name, topic = `misc`.
 - Files that are useful only for a specific conversation. The dump is a
   temporary handover, not an archive of record.
 
+## Public links
+
+`share.sh FILE --public` also creates a symlink under `share/public/...`, and
+Authelia serves that path without login. The file itself stays in the normal
+tree, so the private URL keeps working and removing the symlink unshares it.
+
+Use `--public` only for something the user is happy to show to anyone with the
+link: demo pages, shareable reports, screenshots. Never for credentials,
+customer data, internal drafts, or anything the user has not asked to publish.
+The dump sends `X-Robots-Tag: noindex` and a blocking `robots.txt`, but treat
+search engines as able to find anything once a link circulates.
+
 ## What must never be placed there
 
 - Credentials, tokens, API keys, `login.txt`, `.env`, `service.env`, SSH keys,
@@ -61,9 +73,10 @@ holds more than one file; the autoindex shows it first.
 
 ## Cleanup
 
-The dump is meant to stay small. When a folder is older than 30 days, offer to
-remove it; never delete a folder the user has not mentioned without asking.
-`du -sh ~/opencode/share/*` lists what takes space.
+The dump has no expiry, so it grows. `du -sh ~/opencode/share/*` shows what
+takes space; offer cleanup of folders nobody needs and remove only what the user
+confirms. Public symlinks are the first thing to review when a file should stop
+being reachable.
 
 ## Checking
 
