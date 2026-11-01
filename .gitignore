@@ -9,3 +9,7 @@ login.txt
 
 # local one-off artifacts
 charts/
+
+# machine state, never committed
+share/
+authelia/

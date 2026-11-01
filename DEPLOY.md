@@ -1,64 +1,46 @@
 # Deploy guide
 
-Step-by-step deployment of this setup on a fresh Linux server. The same steps
-work for a second server next to an existing one. Everything below assumes a
-systemd host with Docker only where a containerized reverse proxy is used.
+Order matters: the OpenCode web server first, then the reverse proxy hosts, then
+the Authelia gate, then the file dump. Each phase ends with a check that must
+pass before the next one starts.
 
 ## 0. Prerequisites
 
-- Linux with `systemd`, `curl`, `python3`, `tmux`, `git`.
-- `opencode` v2 installed and reachable as `opencode` in `PATH`:
+- Linux with `systemd`, `curl`, `python3`, `tmux`, `git`, Docker.
+- `opencode` v2 in `PATH`:
   ```sh
   curl -fsSL https://opencode.ai/v2/install | bash
   opencode --version
   ```
-- A reverse proxy (nginx-proxy-manager, Caddy, nginx, Traefik) with a domain
-  for the web UI and a way to issue a TLS certificate.
-- A provider logged in for the agent itself:
-  ```sh
-  opencode auth login
-  ```
+- A provider logged in: `opencode auth login`.
+- A reverse proxy (nginx-proxy-manager, Caddy, nginx) with a domain and TLS.
+- Docker network `gateway` shared with the proxy. Proxy hosts reach containers
+  by container name; no ports are published to the host.
 
-## 1. Get the files
+## 1. Clone and configure
 
 ```sh
 git clone git@github.com:lexuzieel/opencode.git ~/opencode
 cd ~/opencode
-```
-
-If the repository is not available on the new machine, copy the directory and
-skip git.
-
-## 2. Configure
-
-```sh
 cp .env.example .env
 ```
 
-Edit `.env`:
+`.env`:
 
 | Variable | Value |
 |---|---|
-| `PUBLIC_URL` | e.g. `https://code.example.com` |
-| `WEB_HOST` | interface for the standalone server (see below) |
-| `WEB_PORT` | e.g. `49375` |
-| `WEB_ACCESS_FILE` | `login.txt` |
+| `PUBLIC_URL` | public URL of the web UI, scheme included |
+| `WEB_HOST` | listen address: docker bridge gateway when the proxy is a container, `127.0.0.1` when the proxy runs on the host |
+| `WEB_PORT` | port of the standalone server |
+| `WEB_ACCESS_FILE` | password file, relative to this directory or absolute |
 
-Pick `WEB_HOST` by where the proxy runs:
+Find the bridge gateway:
 
-- **Proxy in a container** (nginx-proxy-manager, Caddy, Traefik): the docker
-  bridge gateway of the network shared with the proxy.
-  ```sh
-  docker network inspect gateway --format '{{(index .IPAM.Config 0).Gateway}}'
-  ```
-  A value like `172.23.0.1` is typical. This address is reachable from the
-  proxy container and not from the internet.
-- **Proxy on the host** (nginx or Caddy as a system service): `127.0.0.1`.
+```sh
+docker network inspect gateway --format '{{(index .IPAM.Config 0).Gateway}}'
+```
 
-## 3. Set the web password
-
-The password protects the web UI API and is the key that mints login links.
-Generate it, apply it, and keep the same value in `login.txt` in one go:
+## 2. Web password
 
 ```sh
 PW=$(openssl rand -hex 16)
@@ -67,72 +49,28 @@ printf '# login: opencode\npassword: %s\n' "$PW" > login.txt
 chmod 600 login.txt
 ```
 
-`opencode service set password` restarts the background service, so an open
-TUI reconnects for a moment. It also signs every existing web session out.
+`opencode service set password` restarts the background service, so open TUI
+sessions reconnect for a moment and every web session is signed out.
 
-> Never change the service hostname away from `127.0.0.1`. The local CLI/TUI
-> connects to the background service strictly on `127.0.0.1:49374`; binding it
-> to another interface makes the TUI hang on "Starting background server…".
-> The public web UI is served by the separate `web.sh` process instead.
+Never change the service hostname away from `127.0.0.1`; the local CLI connects
+there, and any other bind makes the TUI hang on "Starting background server".
+The public UI is `web.sh`, a separate process.
 
-## 4. Reverse proxy
-
-Requirements: TLS for `PUBLIC_URL`, forward to `WEB_HOST:WEB_PORT`,
-**websockets/SSE enabled**, `Host` header passed through.
-
-- **nginx-proxy-manager**: Proxy Hosts → Add:
-  domain = `PUBLIC_URL` host, scheme `http`, forward hostname `WEB_HOST`,
-  forward port `WEB_PORT`, **Websockets Support on**, Cache Assets off;
-  SSL tab → request certificate, Force SSL on.
-- **Caddy** (`/etc/caddy/Caddyfile`):
-  ```
-  code.example.com {
-      reverse_proxy 172.23.0.1:49375
-  }
-  ```
-- **nginx**:
-  ```
-  server {
-      server_name code.example.com;
-      location / {
-          proxy_pass http://172.23.0.1:49375;
-          proxy_http_version 1.1;
-          proxy_set_header Upgrade $http_upgrade;
-          proxy_set_header Connection "upgrade";
-          proxy_set_header Host $host;
-      }
-  }
-  ```
-
-## 5. First run
+## 3. Web server and autostart
 
 ```sh
-./web.sh          # foreground, Ctrl+C to stop
-```
-
-Expect `server listening on http://WEB_HOST:WEB_PORT`. In another shell:
-
-```sh
+./web.sh                      # foreground run, Ctrl+C to stop
 curl -s -u "opencode:$(grep -oP 'password: \K\S+' login.txt)" \
-  -o /dev/null -w '%{http_code}\n' "$PUBLIC_URL/api/info"
+  -o /dev/null -w '%{http_code}\n' "$PUBLIC_URL/api/info"    # expect 200
 ```
 
-`200` means proxy, TLS and the server all work.
-
-## 6. Autostart at boot
+Then add the boot entry once:
 
 ```sh
-crontab -e
+crontab -e    # add: @reboot /home/<user>/opencode/boot.sh
 ```
 
-Add:
-
-```
-@reboot /home/<user>/opencode/boot.sh
-```
-
-`boot.sh` waits for Docker, then starts `web.sh` inside the tmux session
-`opencode-web`. Verify without rebooting:
+Check that it works without rebooting:
 
 ```sh
 tmux -L opencode kill-session -t opencode-web 2>/dev/null
@@ -140,25 +78,92 @@ env -i HOME="$HOME" ./boot.sh        # takes ~20s
 tmux -L opencode ls
 ```
 
-## 7. Log in on devices
+## 4. Reverse proxy hosts
+
+Requirements for every host: TLS for the name, forward to the target, websockets
+and SSE passed through, `Host` header preserved.
+
+| Host | Forward to | Notes |
+|---|---|---|
+| `code.<domain>` | `WEB_HOST:WEB_PORT` | OpenCode web UI |
+| `auth.<domain>` | `authelia:9091` | Authelia portal |
+| `files.<domain>` | `share-files:80` | read-only file dump |
+
+Examples: nginx-proxy-manager (Proxy Host, Websockets on, Cache off, request a
+certificate, Force SSL), Caddy `reverse_proxy host:port`, nginx
+`proxy_pass` plus `Upgrade`/`Connection` headers. Certificates can use DNS-01
+with a Cloudflare token; `~/.agents/NPM.md` documents that flow on the servers
+that use nginx-proxy-manager.
+
+## 5. File dump
 
 ```sh
-./pair.sh
+cd ~/opencode/deploy/share-files && docker compose up -d
 ```
 
-Prints a one-time link (5 minutes) and a QR code. Open the link (or scan the
-QR) on the phone or in a browser: the device gets a 30-day cookie. Repeat only
-for a new device, after clearing cookies, or after a password change.
-
-## 8. Project sessions in the TUI
-
-The tmux TUI launcher is independent of the web server. In a project folder:
+The compose file mounts `../../share` read-only and serves it with autoindex.
+Directories must be world-readable (`chmod 755`), otherwise nginx inside the
+container returns 403.
 
 ```sh
-~/opencode/opencode.sh          # or a project wrapper: ./opencode.sh
+echo demo > /tmp/demo.txt
+~/opencode/share.sh /tmp/demo.txt --project demo
 ```
 
-Sessions are shared with the web UI through `~/.local/share/opencode`.
+## 6. Authelia gate
+
+```sh
+cd ~/opencode/deploy/authelia
+./setup.sh                    # generates secrets and a password, starts the container
+cat login.txt                 # the login written by setup.sh
+```
+
+Then protect hosts in the proxy: add the `auth_request` snippet to each guarded
+host's advanced config. It must sit at server level, next to the `location`
+block that the proxy generates itself:
+
+```nginx
+auth_request /authelia;
+error_page 401 =302 https://auth.<domain>/?rd=$scheme://$http_host$request_uri;
+
+location = /authelia {
+    internal;
+    proxy_pass http://authelia:9091/api/authz/auth-request;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
+    proxy_set_header Cookie $http_cookie;
+    proxy_set_header Host $http_host;
+}
+```
+
+Every guarded host needs a matching rule in `authelia/config/configuration.yml`
+(`access_control.rules`, policy `one_factor`); the default policy is deny and an
+unknown host returns 403 instead of a redirect. Restart the container after
+editing:
+
+```sh
+docker compose restart authelia
+```
+
+## 7. Skill install
+
+The skill ships in the repository and is linked into the agent's skill
+directory:
+
+```sh
+ln -sfn ~/opencode/skills/share-files ~/.agents/skills/share-files
+```
+
+## 8. Verify
+
+```sh
+curl -sI https://files.<domain>/ | head -1      # 302 to the Authelia portal
+curl -s  https://auth.<domain>/api/health       # {"status":"OK"}
+```
+
+Open the file dump in a browser, log in once, confirm the listing and a file
+download. Only a browser proves the session cookie end to end.
 
 ## Updating
 
@@ -167,18 +172,18 @@ opencode upgrade
 cd ~/opencode && git pull
 tmux -L opencode kill-session -t opencode-web
 tmux -L opencode new-session -d -s opencode-web -c ~/opencode 'bash ~/opencode/web.sh'
+cd deploy/share-files && docker compose up -d
+cd ../authelia && docker compose up -d
 ```
-
-If a release changes the pairing API, `pair.sh` may need adjusting: it calls
-`POST /api/pair` with basic auth on `WEB_HOST:WEB_PORT`.
 
 ## Troubleshooting
 
 | Symptom | Check |
 |---|---|
-| Proxy returns 502 | `ss -ltn \| grep WEB_PORT` — is `web.sh` running? `tmux -L opencode ls` for `opencode-web` |
-| TUI hangs on "Starting background server…" | the background service must listen on `127.0.0.1`; reset with `opencode service set hostname 127.0.0.1` and `opencode service start` |
-| Web UI asks for a login link | that is expected: run `./pair.sh` |
-| Link opened but no session list | proxy strips websockets/SSE; enable them |
-| QR missing in `pair.sh` output | `pip install --user qrcode` |
+| Proxy 502 | `ss -ltn \| grep WEB_PORT`; `tmux -L opencode ls` for `opencode-web` |
+| TUI hangs on "Starting background server" | service must listen on `127.0.0.1`; `opencode service set hostname 127.0.0.1 && opencode service start` |
+| Web UI asks for a link | expected: `./pair.sh` |
+| Guarded host returns 403 instead of a login redirect | host missing from `access_control.rules` in Authelia |
+| Dump returns 403 | directory not readable by the nginx user: `chmod 755` |
+| QR missing in `pair.sh` | `pip install --user qrcode` |
 | `pair.sh` says no password | `login.txt` missing or without a `password:` line |
