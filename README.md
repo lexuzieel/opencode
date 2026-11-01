@@ -30,6 +30,20 @@ manager: a wrapper in a project folder only exports `TMUX_PROJECT_DIR` and
 execs `~/opencode/opencode.sh`, so session naming, conversation resume and the
 tmux settings have one source of truth.
 
+## Everyday commands
+
+The launcher works from any project folder, so shell users rarely type the full
+path. The same function works in bash and zsh:
+
+```sh
+# ~/.bashrc or ~/.zshrc
+oc() { ~/opencode/opencode.sh "$@"; }
+```
+
+`oc` starts the session of the current folder or reattaches to it, `oc review`
+opens a second named session in the same folder, and `oc list` shows what is
+running. Reload the file with `source ~/.zshrc` (or `~/.bashrc`) to pick it up.
+
 ## Architecture
 
 ```
