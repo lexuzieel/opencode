@@ -206,7 +206,7 @@ else
     # The proxy always comes from the project's .env, else from the one next to
     # this script, so it stays out of argv.
     PROXY=""
-    for f in "$PROJECT_DIR/.env" "$(dirname "$TMUX_CONF")/../.env"; do
+    for f in "$PROJECT_DIR/.env" "$(dirname "$TMUX_CONF")/.env"; do
         PROXY=$(grep -sE '^HTTPS_PROXY=' "$f" 2>/dev/null | cut -d= -f2-)
         [[ -n "$PROXY" ]] && break
     done

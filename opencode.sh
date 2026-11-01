@@ -2,7 +2,7 @@
 # OpenCode TUI in a persistent tmux session, one per project folder.
 # Usage: opencode.sh [ARGS...]    (ARGS go to opencode)
 # Ctrl+b d detaches and leaves the session running; the next call reattaches.
-# Uses the agent wrapper shipped in bin/ (or OPENCODE_AGENT_SH, or the one in
+# Uses the agent wrapper next to this script (or OPENCODE_AGENT_SH, or the one in
 # ~/claude); without any of them it falls back to a minimal tmux session.
 set -eu
 
@@ -10,7 +10,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="${TMUX_PROJECT_DIR:-$PWD}"
 WRAPPER="${OPENCODE_AGENT_SH:-}"
 if [ -z "$WRAPPER" ]; then
-    for candidate in "$HERE/bin/agent.sh" "$HOME/claude/agent.sh"; do
+    for candidate in "$HERE/agent.sh" "$HOME/claude/agent.sh"; do
         [ -x "$candidate" ] && { WRAPPER="$candidate"; break; }
     done
 fi

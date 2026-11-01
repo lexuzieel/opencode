@@ -11,8 +11,8 @@ live in `deploy/`.
 | Path | Role |
 |---|---|
 | `opencode.sh` | TUI in a persistent tmux session (best run from a project folder) |
-| `bin/agent.sh` | session manager: resumes the newest conversation, named sessions, list and kill |
-| `bin/tmux.conf` | tmux defaults and terminal features for those sessions |
+| `agent.sh` | session manager: resumes the newest conversation, named sessions, list and kill |
+| `tmux.conf` | tmux defaults and terminal features for those sessions |
 | `web.sh` | standalone `opencode serve` for the browser and phone UI: `start`, `stop`, `restart`, `status`, `passwd` |
 | `boot.sh` | cron `@reboot` entry point: waits for Docker, runs `web.sh start` |
 | `pair.sh` | one-time login link plus QR for the web UI |
@@ -33,7 +33,7 @@ tmux settings have one source of truth.
 ## Architecture
 
 ```
-TUI:      ./opencode.sh  -> bin/agent.sh -> tmux per project -> opencode
+TUI:      ./opencode.sh  -> agent.sh -> tmux per project -> opencode
                            -> local service 127.0.0.1:49374
 Web:      cron @reboot   -> boot.sh -> web.sh start -> tmux opencode-web
                                                      -> opencode serve WEB_HOST:WEB_PORT
