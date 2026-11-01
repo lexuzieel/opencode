@@ -28,3 +28,15 @@ if [ -z "$CODE" ]; then
 fi
 
 echo "$PUBLIC_URL/auth/connect/$CODE"
+echo
+python3 - "$PUBLIC_URL/auth/connect/$CODE" <<'PY'
+import sys
+try:
+    import qrcode
+except ImportError:
+    sys.exit(0)  # link is already printed; QR is a bonus
+qr = qrcode.QRCode(border=1)
+qr.add_data(sys.argv[1])
+qr.make()
+qr.print_ascii(invert=True)
+PY

@@ -31,10 +31,11 @@ cannot.
 ## Login flow
 
 `./pair.sh [public-url]` mints a one-time code (5 minutes) on the standalone
-server and prints `https://code.aleksei.dev/auth/connect/<code>`. Opening the
-link stores a 30-day cookie in that browser. A new link is needed only for a
-new device, after clearing cookies, or after a password change (changing the
-password signs every device out).
+server and prints `https://code.aleksei.dev/auth/connect/<code>` together with a
+terminal QR code for the phone. Opening the link (or scanning the QR) stores a
+30-day cookie in that browser. A new link is needed only for a new device, after
+clearing cookies, or after a password change (changing the password signs every
+device out).
 
 Environment overrides: `PAIR_URL`, `WEB_HOST`, `WEB_PORT`, `WEB_ACCESS_FILE`.
 
