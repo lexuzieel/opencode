@@ -1,15 +1,15 @@
 #!/bin/bash
 # Copy a file into the server file dump and print its public URL.
 # Usage: share.sh FILE [--project NAME] [--topic TEXT] [--move]
-#   Layout:  ~/share/<project>/<YYYY-MM-DD>-<topic>/<file>
-#   Public:  https://files.code.aleksei.dev/<project>/<date-topic>/<file>
-# Defaults: project = name of the current directory, topic = "misc".
+#   Layout:  ~/opencode/share/<project>/<YYYY-MM-DD>/[<topic>/]<file>
+#   Public:  https://files.code.aleksei.dev/<project>/<date>/[<topic>/]<file>
+# Defaults: project = name of the current directory; no topic folder unless --topic.
 # The dump is read-only over HTTP and behind Authelia.
 set -eu
 
 SRC=""
 PROJECT=""
-TOPIC="misc"
+TOPIC=""
 MOVE=0
 
 while [ $# -gt 0 ]; do
@@ -26,7 +26,7 @@ done
 [ -n "$SRC" ] || { echo "error: no file given (see --help)" >&2; exit 2; }
 [ -f "$SRC" ] || { echo "error: not a file: $SRC" >&2; exit 1; }
 
-BASE="${SHARE_ROOT:-$HOME/share}"
+BASE="${SHARE_ROOT:-$HOME/opencode/share}"
 [ -n "$PROJECT" ] || PROJECT="$(basename "$PWD")"
 
 slug() {
@@ -37,9 +37,11 @@ PROJECT_SLUG=$(slug "$PROJECT")
 TOPIC_SLUG=$(slug "$TOPIC")
 [ -n "$PROJECT_SLUG" ] || { echo "error: project name has no latin letters or digits" >&2; exit 1; }
 
-DIR="$BASE/$PROJECT_SLUG/$(date +%F)-$TOPIC_SLUG"
+DAY="$(date +%F)"
+DIR="$BASE/$PROJECT_SLUG/$DAY"
+[ -n "$TOPIC_SLUG" ] && DIR="$DIR/$TOPIC_SLUG"
 mkdir -p "$DIR"
-chmod 755 "$BASE" "$BASE/$PROJECT_SLUG" "$DIR"
+chmod 755 "$BASE" "$BASE/$PROJECT_SLUG" "$BASE/$PROJECT_SLUG/$DAY" "$DIR"
 
 NAME=$(basename "$SRC")
 DEST="$DIR/$NAME"
@@ -57,6 +59,6 @@ else
 fi
 chmod 644 "$DEST"
 
-URL="https://files.code.aleksei.dev/${PROJECT_SLUG}/$(basename "$DIR")/$(basename "$DEST")"
+URL="https://files.code.aleksei.dev/${PROJECT_SLUG}/${DAY}/$([ -n "$TOPIC_SLUG" ] && printf '%s/' "$TOPIC_SLUG")$(basename "$DEST")"
 echo "$URL"
 echo "saved: $DEST" >&2

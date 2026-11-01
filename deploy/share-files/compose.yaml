@@ -1,0 +1,14 @@
+services:
+  share-files:
+    image: nginx:alpine
+    container_name: share-files
+    restart: unless-stopped
+    volumes:
+      - ../../share:/usr/share/nginx/html:ro
+      - ./default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - gateway
+
+networks:
+  gateway:
+    external: true
