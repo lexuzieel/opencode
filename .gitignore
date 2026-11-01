@@ -1,0 +1,5 @@
+# Server credentials, never committed
+login.txt
+*.bak
+*.log
+.DS_Store
