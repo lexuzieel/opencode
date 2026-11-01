@@ -3,3 +3,6 @@ login.txt
 *.bak
 *.log
 .DS_Store
+
+# Local deployment config
+.env

@@ -1,16 +1,26 @@
 #!/bin/bash
 # OpenCode standalone web server for the reverse proxy (nginx-proxy-manager).
 # Usage: web.sh [host] [port]
-#   host  interface to listen on (default: 172.23.0.1, the docker bridge IP,
-#         reachable from the proxy container but not from the internet)
-#   port  port to listen on (default: 49375)
-# The background service on 127.0.0.1 is not touched. The password comes
-# from web-access.txt, so it never appears in argv.
+# Settings come from .env (see .env.example); the password from login.txt.
+# The background service on 127.0.0.1 is not touched. The password is read
+# from the file, so it never appears in argv.
 set -eu
+
+CONF_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$CONF_DIR/.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . "$CONF_DIR/.env"
+    set +a
+fi
 
 HOST="${1:-${WEB_HOST:-172.23.0.1}}"
 PORT="${2:-${WEB_PORT:-49375}}"
-PASS_FILE="${WEB_ACCESS_FILE:-$HOME/opencode/login.txt}"
+PASS_FILE="${WEB_ACCESS_FILE:-login.txt}"
+case "$PASS_FILE" in
+    /*) ;;
+    *) PASS_FILE="$CONF_DIR/$PASS_FILE" ;;
+esac
 
 PW=$(grep -oP 'password: \K\S+' "$PASS_FILE" 2>/dev/null | head -1)
 if [ -z "$PW" ]; then
