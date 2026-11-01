@@ -61,6 +61,9 @@ echo "== validating"
 docker run --rm -v "$HERE/config:/config" --entrypoint /app/authelia "$IMAGE" validate-config
 
 echo "== starting"
+# The image chowns /config to PUID:PGID on start, so record the host user in
+# the compose .env: without it the container owns the config as root.
+[ -f .env ] || printf 'PUID=%s\nPGID=%s\n' "$(id -u)" "$(id -g)" > .env
 docker compose up -d
 sleep 3
 docker compose ps --format '{{.Name}} {{.Status}}'

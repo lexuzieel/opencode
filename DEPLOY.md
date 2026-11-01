@@ -144,6 +144,11 @@ State lives in `deploy/authelia/config/` and `data/`, both git-ignored. The
 compose project is named `opencode-authelia` while the container keeps the name
 `authelia`, so a second checkout cannot take the live container over.
 
+The container runs as `PUID:PGID` from `deploy/authelia/.env`, which `setup.sh`
+fills with the host user, and the image chowns `config/` to that uid on every
+start. Without those values it runs as root and takes the directory over, which
+leaves `configuration.yml` unreadable for the host user.
+
 Guard a host (this writes the `auth_request` snippet into the proxy host):
 
 ```sh

@@ -10,6 +10,11 @@ services:
       - ./data:/data
     environment:
       - TZ=Etc/UTC
+      # The image runs as this uid and chowns /config to it on every start.
+      # Keep them equal to the host user in .env, otherwise the directory ends
+      # up owned by root and the host can no longer edit configuration.yml.
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
     expose:
       - "9091"
     networks:
