@@ -5,7 +5,10 @@
 #   Private: <SHARE_URL>/<project>/<date>/[<topic>/]<file>   needs a login
 #   Public:  <SHARE_URL>/public/<uuid>/<file>                no login
 # Defaults: project = current directory name; no topic folder unless --topic.
-# Settings come from .env next to this script: SHARE_URL, SHARE_ROOT.
+# Settings come from .env next to this script:
+#   SHARE_URL         private tree, behind the login
+#   SHARE_PUBLIC_URL  host for published links, open to readers and crawlers
+#   SHARE_ROOT        the directory both trees live in
 # --public  publishes through a symlink under public/<uuid>/ and logs it
 # The dump is read-only over HTTP; only public/ and robots.txt skip the login.
 set -eu
@@ -115,7 +118,15 @@ if [ "$PUBLIC" = "1" ]; then
     chmod 755 "$BASE/public" "$PDIR"
     PLINK="$PDIR/$(basename "$DEST")"
     ln -sfn "$(realpath --relative-to="$PDIR" "$DEST")" "$PLINK"
-    PUBURL="$(link "public/${PUB_ID}/$(basename "$DEST")")"
+    # Public links live on their own host when one is configured: a
+    # robots.txt that says "disallow everything" next to "allow /public"
+    # is read strictly by some clients, and those are the readers a
+    # public link is meant for.
+    if [ -n "${SHARE_PUBLIC_URL:-}" ]; then
+        PUBURL="${SHARE_PUBLIC_URL%/}/${PUB_ID}/$(basename "$DEST")"
+    else
+        PUBURL="$(link "public/${PUB_ID}/$(basename "$DEST")")"
+    fi
     echo "$PUBURL"
     echo "public link: $PLINK -> $(readlink "$PLINK")" >&2
 

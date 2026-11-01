@@ -39,6 +39,7 @@ $EDITOR .env
 |---|---|
 | `PUBLIC_URL` | public URL of the web UI, scheme included |
 | `SHARE_URL` | public base URL of the file dump, scheme included, no trailing slash |
+| `SHARE_PUBLIC_URL` | base URL for published links, served by `deploy/share-public`; falls back to `<SHARE_URL>/public/<uuid>/` |
 | `SHARE_ROOT` | where `share.sh` keeps files; default `share/` in this directory |
 | `WEB_HOST` | listen address: docker bridge gateway when the proxy is a container, `127.0.0.1` when the proxy runs on the host |
 | `WEB_PORT` | port of the standalone server |
@@ -107,7 +108,8 @@ and SSE passed through, `Host` header preserved.
 |---|---|---|
 | `code.<domain>` | `WEB_HOST:WEB_PORT` | OpenCode web UI |
 | `auth.<domain>` | `authelia:9091` | Authelia portal |
-| `files.<domain>` | `share-files:80` | read-only file dump |
+| `files.<domain>` | `share-files:80` | read-only file dump, behind the gate |
+| `share.<domain>` | `share-public:80` | published links only, no gate, no listing |
 
 Examples: nginx-proxy-manager (Proxy Host, Websockets on, Cache off, request a
 certificate, Force SSL), Caddy `reverse_proxy host:port`, nginx `proxy_pass`
@@ -137,8 +139,37 @@ echo demo > /tmp/demo.txt
 ```
 
 Every share is private by default and needs an Authelia login. `--public` adds a
-symlink under `public/<uuid>/`, which the dump serves without login, and appends
-a row to `share/public-links.md`.
+symlink under `public/<uuid>/` and appends a row to `share/public-links.md`.
+
+### The published tree has its own host
+
+Published links are handed to people, and sometimes to an automated reader, so
+they cannot sit behind the same `robots.txt` as the private tree: a file that
+says `Disallow: /` next to `Allow: /public/` gets the strict reading from some
+clients, which blocks exactly the links we give out. Two small containers keep
+the two jobs apart.
+
+```sh
+cd ~/opencode/deploy/share-public && docker compose up -d
+```
+
+It mounts the same `../../share` read-only, serves only `public/` as its root,
+answers `Allow: /`, sends `X-Robots-Tag: index, follow`, and never lists a
+directory. Point `share.<domain>` at it and set `SHARE_PUBLIC_URL` so `share.sh`
+prints public links on that host:
+
+```sh
+# .env
+SHARE_PUBLIC_URL=https://share.example.com
+```
+
+Check it the way a reader will, without a session:
+
+```sh
+curl -sI https://share.<domain>/<uuid>/file.txt   # 200, X-Robots-Tag: index, follow
+curl -s  https://share.<domain>/robots.txt        # Allow: /
+curl -sI https://files.<domain>/<project>/<date>/file.txt   # 302 to the gate
+```
 
 ## 6. Authelia gate
 

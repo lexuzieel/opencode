@@ -61,8 +61,20 @@ publishing one file never exposes the others.
 Use `--public` only for something the user is happy to show to anyone with the
 link: demo pages, shareable reports, screenshots. Never for credentials,
 customer data, internal drafts, or anything the user has not asked to publish.
-The dump sends `X-Robots-Tag: noindex` and a blocking `robots.txt`, but treat
-search engines as able to find anything once a link circulates.
+Two hosts serve the same tree, on purpose:
+
+- `SHARE_URL` (`https://files.code.aleksei.dev`) is the private tree behind the
+  login, with a blocking `robots.txt` and `X-Robots-Tag: noindex`.
+- `SHARE_PUBLIC_URL` (`https://share.previews.aleksei.dev`) serves only
+  `share/public`, without a login, with `Allow: /` and `X-Robots-Tag: index,
+  follow`. Public links are printed on this host, so an automated reader can
+  open them: a single robots.txt that mixes "disallow everything" with "allow
+  one folder" gets the strict reading from some clients, which blocks exactly
+  the links we hand out. If `SHARE_PUBLIC_URL` is unset, `--public` falls back
+  to `<SHARE_URL>/public/<uuid>/`.
+
+Public links are still unlisted, but treat search engines as able to find
+anything once a link circulates.
 
 ## What must never be placed there
 
