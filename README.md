@@ -13,6 +13,7 @@ Everything deployment specific lives in `.env`; the only secret is `login.txt`.
 | `boot.sh` | cron `@reboot` entry point: waits for Docker, starts `web.sh` in a tmux session |
 | `pair.sh` | prints a one-time login link and a QR code for the web UI |
 | `.env.example` | template for `.env` (public URL, bind address, password file path) |
+| `DEPLOY.md` | step-by-step deployment guide for a new server |
 | `login.txt` | server password (git-ignored); see `login.example.txt` |
 
 ## Architecture
