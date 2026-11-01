@@ -13,8 +13,8 @@ live in `deploy/`.
 | `opencode.sh` | TUI in a persistent tmux session (best run from a project folder) |
 | `bin/agent.sh` | session manager: resumes the newest conversation, named sessions, list and kill |
 | `bin/tmux.conf` | tmux defaults and terminal features for those sessions |
-| `web.sh` | standalone `opencode serve` for the browser and phone UI |
-| `boot.sh` | cron `@reboot` entry point: waits for Docker, starts `web.sh` |
+| `web.sh` | standalone `opencode serve` for the browser and phone UI: `start`, `stop`, `restart`, `status`, `passwd` |
+| `boot.sh` | cron `@reboot` entry point: waits for Docker, runs `web.sh start` |
 | `pair.sh` | one-time login link plus QR for the web UI |
 | `share.sh` | copies a file into the dump; `--public` adds a uuid link |
 | `skills/share-files/` | skill that tells agents how to use the dump |
@@ -23,15 +23,15 @@ live in `deploy/`.
 | `.env.example` | template for `.env` (public URLs, bind address, password file) |
 | `DEPLOY.md` | step-by-step deployment for a new server |
 | `share/`, `deploy/authelia/config`, `data` | machine state: files and secrets, never committed |
-| `login.txt` | web UI password (git-ignored); see `login.example.txt` |
+| `password.txt` | web UI password (git-ignored); see `password.example.txt` |
 
 ## Architecture
 
 ```
 TUI:      ./opencode.sh  -> bin/agent.sh -> tmux per project -> opencode
                            -> local service 127.0.0.1:49374
-Web:      cron @reboot   -> boot.sh -> tmux opencode-web -> web.sh
-                                                         -> opencode serve WEB_HOST:WEB_PORT
+Web:      cron @reboot   -> boot.sh -> web.sh start -> tmux opencode-web
+                                                     -> opencode serve WEB_HOST:WEB_PORT
 reverse proxy -> https://<PUBLIC_URL> -> WEB_HOST:WEB_PORT
 
 files:    deploy/share-files (nginx, gateway network) -> share/ (read-only)
@@ -71,3 +71,20 @@ cp .env.example .env    # public URLs, listen address, password file
 | `WEB_ACCESS_FILE` | password file for the web UI |
 
 See `DEPLOY.md` for the full deployment order.
+
+## Web server
+
+```sh
+./web.sh                 # foreground run, Ctrl-C to stop
+./web.sh start           # detached in the tmux session "opencode-web"
+./web.sh status          # up? and does the password match the file?
+./web.sh restart         # apply a changed password, print a login link
+./web.sh passwd          # generate a new password (asks first)
+```
+
+The password is read from `password.txt` once, when the process starts, so
+editing the file has no effect until `./web.sh restart`. `status` reports the
+mismatch as `401` instead of leaving it to guesswork.
+
+Browser sessions are signed with that password and last 30 days; `passwd` and a
+restart after changing the file end them, and `./pair.sh` mints a new link.

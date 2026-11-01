@@ -42,7 +42,7 @@ $EDITOR .env
 | `SHARE_ROOT` | where `share.sh` keeps files; default `share/` in this directory |
 | `WEB_HOST` | listen address: docker bridge gateway when the proxy is a container, `127.0.0.1` when the proxy runs on the host |
 | `WEB_PORT` | port of the standalone server |
-| `WEB_ACCESS_FILE` | password file, relative to this directory or absolute |
+| `WEB_ACCESS_FILE` | password file, relative to this directory or absolute; default `password.txt` |
 
 Find the bridge gateway:
 
@@ -53,16 +53,25 @@ docker network inspect gateway --format '{{(index .IPAM.Config 0).Gateway}}'
 ## 2. Web password
 
 ```sh
-PW=$(openssl rand -hex 16)
-opencode service set password "$PW"
-printf '# login: opencode\npassword: %s\n' "$PW" > login.txt
-chmod 600 login.txt
+./web.sh passwd               # generates the password into password.txt, 0600
+./web.sh restart              # applies it and prints a login link
 ```
 
-`opencode service set password` restarts the background service on
-`127.0.0.1:49374`, so TUI sessions reconnect for a moment. The web UI is a
-separate process and reads this password from `login.txt` when `web.sh` starts,
-so restart it to pick up a new one.
+`passwd` prints the new password once and replaces the file; run it without
+`--yes`, so it asks first. Non-interactively, as in a script, add `--yes`.
+
+The password lives in `password.txt` and is read by the web server once, when
+its process starts. Editing the file by hand therefore changes nothing until
+`./web.sh restart`; `./web.sh status` reports that mismatch as `401` instead of
+letting you discover it at the login screen.
+
+`opencode service set password` is a separate credential for the background
+service on `127.0.0.1:49374`, which the TUI uses. Set it only if you need both
+to match:
+
+```sh
+opencode service set password "$(grep -oP '^password: \K\S+' password.txt)"
+```
 
 Never change the service hostname away from `127.0.0.1`; the local CLI connects
 there, and any other bind makes the TUI hang on "Starting background server".
@@ -72,8 +81,7 @@ The public UI is `web.sh`, a separate process.
 
 ```sh
 ./web.sh                      # foreground run, Ctrl+C to stop
-. ./.env && curl -s -u "opencode:$(grep -oP '^password: \K\S+' login.txt)" \
-  -o /dev/null -w '%{http_code}\n' "$PUBLIC_URL/api/info"    # expect 200
+./web.sh status               # tmux session, port, and password match
 ```
 
 Then add the boot entry once:
@@ -85,9 +93,9 @@ crontab -e    # add: @reboot /home/<user>/opencode/boot.sh
 Check that it works without rebooting:
 
 ```sh
-tmux -L opencode kill-session -t opencode-web 2>/dev/null
+tmux -L opencode kill-session -t opencode-web 2>/dev/null || true
 env -i HOME="$HOME" ./boot.sh        # waits 20s for docker, then starts
-tmux -L opencode ls
+./web.sh status                      # expect api: 200
 ```
 
 ## 4. Reverse proxy hosts
@@ -210,7 +218,8 @@ cd ../authelia && docker compose up -d
 | Proxy 502 | `ss -ltn \| grep WEB_PORT`; `tmux -L opencode ls` for `opencode-web` |
 | TUI hangs on "Starting background server" | service must listen on `127.0.0.1`: `opencode service set hostname 127.0.0.1 && opencode service start` |
 | Web UI asks for a link | expected: `./pair.sh` |
-| `pair.sh` says no password | `login.txt` missing or without a `password:` line |
+| `web.sh status` says `401` | the process runs with another password than `password.txt`: `./web.sh restart` |
+| `pair.sh` says no password | `password.txt` missing or without a `password:` line: `./web.sh passwd` |
 | `pair.sh` says PUBLIC_URL is unset | no `.env`, or `.env` without `PUBLIC_URL` |
 | Guarded host returns 403 instead of a login redirect | host missing from `access_control.rules` in Authelia |
 | Dump returns 403 | directory not readable by the nginx user: `chmod 755` |

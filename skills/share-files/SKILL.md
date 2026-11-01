@@ -66,7 +66,7 @@ search engines as able to find anything once a link circulates.
 
 ## What must never be placed there
 
-- Credentials, tokens, API keys, `login.txt`, `.env`, SSH keys, database dumps,
+- Credentials, tokens, API keys, `password.txt`, `.env`, SSH keys, database dumps,
   or anything containing someone else's personal data.
 - Files larger than about 200 MB: copy them somewhere deliberate and ask first.
 - Anything already tracked in git when the repo has a proper place for it.

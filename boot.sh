@@ -12,4 +12,4 @@ if tmux -L opencode has-session -t opencode-web 2>/dev/null; then
     exit 0
 fi
 
-exec tmux -L opencode new-session -d -s opencode-web -c "$HOME/opencode" "bash $HOME/opencode/web.sh"
+exec "$HOME/opencode/web.sh" start

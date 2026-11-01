@@ -1,8 +1,9 @@
 #!/bin/bash
 # Print a one-time login link for the OpenCode web UI, plus a terminal QR code.
 # Usage: pair.sh [public-url]
-# Settings come from .env (see .env.example); the password from login.txt.
+# Settings come from .env (see .env.example); the password from password.txt.
 # The link lives 5 minutes; logging in through it keeps a 30-day cookie.
+# PAIR_NO_QR=1 prints the link without the QR code.
 # Mints the code on the standalone web server; the background service on
 # 127.0.0.1 is not touched.
 set -eu
@@ -22,7 +23,7 @@ if [ -z "$PUBLIC_URL" ]; then
 fi
 HOST="${WEB_HOST:-127.0.0.1}"
 PORT="${WEB_PORT:-49375}"
-PASS_FILE="${WEB_ACCESS_FILE:-login.txt}"
+PASS_FILE="${WEB_ACCESS_FILE:-password.txt}"
 case "$PASS_FILE" in
     /*) ;;
     *) PASS_FILE="$CONF_DIR/$PASS_FILE" ;;
@@ -43,6 +44,9 @@ if [ -z "$CODE" ]; then
 fi
 
 echo "$PUBLIC_URL/auth/connect/$CODE"
+if [ "${PAIR_NO_QR:-0}" = "1" ]; then
+    exit 0
+fi
 echo
 python3 - "$PUBLIC_URL/auth/connect/$CODE" <<'PY'
 import signal
